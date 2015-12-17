@@ -4,12 +4,14 @@ using System.Collections.Generic;
 using System.Collections.Specialized;
 using System.Linq;
 using System.Net;
-using System.Security.Cryptography;
 using System.Text;
 using System.Threading.Tasks;
+using Windows.Security.Cryptography;
+using Windows.Storage.Streams;
 
 namespace SteamAuth
 {
+
     /// <summary>
     /// Handles the linking process for a new mobile authenticator.
     /// </summary>
@@ -30,7 +32,7 @@ namespace SteamAuth
         /// <summary>
         /// After the initial link step, if successful, this will be the SteamGuard data for the account. PLEASE save this somewhere after generating it; it's vital data.
         /// </summary>
-        public SteamGuardAccount LinkedAccount { get; private set; }
+        public SteamGuardAccount LinkedAccount { get; set; }
 
         /// <summary>
         /// True if the authenticator has been fully finalized.
@@ -49,141 +51,213 @@ namespace SteamAuth
             session.AddCookies(_cookies);
         }
 
-        public LinkResult AddAuthenticator()
+        public void AddAuthenticator(LinkCallback callback)
         {
-            bool hasPhone = _hasPhoneAttached();
-            if (hasPhone && PhoneNumber != null)
-                return LinkResult.MustRemovePhoneNumber;
-            if (!hasPhone && PhoneNumber == null)
-                return LinkResult.MustProvidePhoneNumber;
-
-            if (!hasPhone)
+            _hasPhoneAttached(hasPhone =>
             {
-                if (!_addPhoneNumber())
+                if (hasPhone && PhoneNumber != null)
                 {
-                    return LinkResult.GeneralFailure;
+                    callback(LinkResult.MustRemovePhoneNumber);
+                    return;
                 }
-            }
+                if (!hasPhone && PhoneNumber == null) {
+                    callback(LinkResult.MustProvidePhoneNumber);
+                    return;
+                }
 
-            var postData = new NameValueCollection();
-            postData.Add("access_token", _session.OAuthToken);
-            postData.Add("steamid", _session.SteamID.ToString());
-            postData.Add("authenticator_type", "1");
-            postData.Add("device_identifier", this.DeviceID);
-            postData.Add("sms_phone_id", "1");
+                BCallback numberAddedCallback = numberAdded =>
+                {
+                    if (!numberAdded)
+                    {
+                        callback(LinkResult.GeneralFailure);
+                        return;
+                    }
 
-            string response = SteamWeb.MobileLoginRequest(APIEndpoints.STEAMAPI_BASE + "/ITwoFactorService/AddAuthenticator/v0001", "POST", postData);
-            if (response == null) return LinkResult.GeneralFailure;
+                    var postData = new Dictionary<string, string>();
+                    postData["access_token"] = _session.OAuthToken;
+                    postData["steamid"] = _session.SteamID.ToString();
+                    postData["authenticator_type"] = "1";
+                    postData["device_identifier"] = this.DeviceID;
+                    postData["sms_phone_id"] = "1";
 
-            var addAuthenticatorResponse = JsonConvert.DeserializeObject<AddAuthenticatorResponse>(response);
-            if (addAuthenticatorResponse == null || addAuthenticatorResponse.Response == null)
-            {
-                return LinkResult.GeneralFailure;
-            }
+                    SteamWeb.MobileLoginRequest(response =>
+                    {
+                        if (response == null)
+                        {
+                            callback(LinkResult.GeneralFailure);
+                            return;
+                        }
 
-            if (addAuthenticatorResponse.Response.Status == 29)
-            {
-                return LinkResult.AuthenticatorPresent;
-            }
+                        var addAuthenticatorResponse = JsonConvert.DeserializeObject<AddAuthenticatorResponse>(response);
+                        if (addAuthenticatorResponse == null || addAuthenticatorResponse.Response == null)
+                        {
+                            callback(LinkResult.GeneralFailure);
+                            return;
+                        }
 
-            if (addAuthenticatorResponse.Response.Status != 1)
-            {
-                return LinkResult.GeneralFailure;
-            }
+                        if (addAuthenticatorResponse.Response.Status == 29)
+                        {
+                            callback(LinkResult.AuthenticatorPresent);
+                            return;
+                        }
 
-            this.LinkedAccount = addAuthenticatorResponse.Response;
-            LinkedAccount.Session = this._session;
-            LinkedAccount.DeviceID = this.DeviceID;
+                        if (addAuthenticatorResponse.Response.Status != 1)
+                        {
+                            callback(LinkResult.GeneralFailure);
+                            return;
+                        }
 
-            return LinkResult.AwaitingFinalization;
+                        this.LinkedAccount = addAuthenticatorResponse.Response;
+                        LinkedAccount.Session = this._session;
+                        LinkedAccount.DeviceID = this.DeviceID;
+
+                        callback(LinkResult.AwaitingFinalization);
+                    }, APIEndpoints.STEAMAPI_BASE + "/ITwoFactorService/AddAuthenticator/v0001", "POST", postData);
+                };
+
+                if (!hasPhone)
+                {
+                    _addPhoneNumber(numberAddedCallback);
+                } else
+                {
+                    numberAddedCallback(true);
+                }
+            });
         }
 
-        public FinalizeResult FinalizeAddAuthenticator(string smsCode)
+        public void FinalizeAddAuthenticator(FinalizeCallback callback, string smsCode)
         {
             bool smsCodeGood = false;
 
-            var postData = new NameValueCollection();
-            postData.Add("steamid", _session.SteamID.ToString());
-            postData.Add("access_token", _session.OAuthToken);
-            postData.Add("activation_code", smsCode);
-            postData.Add("authenticator_code", "");
+            var postData = new Dictionary<string, string>();
+            postData["steamid"] = _session.SteamID.ToString();
+            postData["access_token"] = _session.OAuthToken;
+            postData["activation_code"] = smsCode;
+            postData["authenticator_code"] = "";
             int tries = 0;
-            while (tries <= 30)
+
+            Callback makeRequest = r => { };
+
+            Callback getAuthCode = response =>
             {
-                postData.Set("authenticator_code", tries == 0 ? "" : LinkedAccount.GenerateSteamGuardCode());
-                postData.Add("authenticator_time", TimeAligner.GetSteamTime().ToString());
+                if (tries == 0)
+                {
+                    makeRequest("");
+                }
+                else
+                {
+                    LinkedAccount.GenerateSteamGuardCode(makeRequest);
+                }
+            };
 
-                if(smsCodeGood)
-                    postData.Set("activation_code", "");
+            Callback reqCallback = response =>
+            {
+                if (tries++ > 30)
+                {
+                    callback(FinalizeResult.GeneralFailure);
+                    return;
+                }
 
-                string response = SteamWeb.MobileLoginRequest(APIEndpoints.STEAMAPI_BASE + "/ITwoFactorService/FinalizeAddAuthenticator/v0001", "POST", postData);
-                if (response == null) return FinalizeResult.GeneralFailure;
+                if (response == null)
+                {
+                    callback(FinalizeResult.GeneralFailure);
+                    return;
+                }
 
                 var finalizeResponse = JsonConvert.DeserializeObject<FinalizeAuthenticatorResponse>(response);
 
                 if (finalizeResponse == null || finalizeResponse.Response == null)
                 {
-                    return FinalizeResult.GeneralFailure;
+                    callback(FinalizeResult.GeneralFailure);
+                    return;
                 }
 
-                if(finalizeResponse.Response.Status == 89)
+                if (finalizeResponse.Response.Status == 89)
                 {
-                    return FinalizeResult.BadSMSCode;
+                    callback(FinalizeResult.BadSMSCode);
+                    return;
                 }
 
-                if(finalizeResponse.Response.Status == 88)
+                if (finalizeResponse.Response.Status == 88)
                 {
-                    if(tries >= 30)
+                    if (tries >= 30)
                     {
-                        return FinalizeResult.UnableToGenerateCorrectCodes;
+                        callback(FinalizeResult.UnableToGenerateCorrectCodes);
+                        return;
                     }
                 }
 
                 if (!finalizeResponse.Response.Success)
                 {
-                    return FinalizeResult.GeneralFailure;
+                    callback(FinalizeResult.GeneralFailure);
+                    return;
                 }
 
-                if (finalizeResponse.Response.WantMore) 
+                if (finalizeResponse.Response.WantMore)
                 {
                     smsCodeGood = true;
                     tries++;
-                    continue;
+                    getAuthCode("");
+                    return;
                 }
 
                 this.LinkedAccount.FullyEnrolled = true;
-                return FinalizeResult.Success;
-            }
+                callback(FinalizeResult.Success);
+            };
 
-            return FinalizeResult.GeneralFailure;
+            makeRequest = response => {
+                postData["authenticator_code"] = response;
+                TimeAligner.GetSteamTime(steamTime => {
+                    postData["authenticator_time"] = steamTime.ToString();
+
+                    if (smsCodeGood)
+                        postData["activation_code"] = "";
+
+                    SteamWeb.MobileLoginRequest(reqCallback, APIEndpoints.STEAMAPI_BASE + "/ITwoFactorService/FinalizeAddAuthenticator/v0001", "POST", postData);
+                });
+            };
+
+            getAuthCode("");
         }
 
-        private bool _addPhoneNumber()
+        private void _addPhoneNumber(BCallback callback)
         {
-            var postData = new NameValueCollection();
-            postData.Add("op", "add_phone_number");
-            postData.Add("arg", PhoneNumber);
-            postData.Add("sessionid", _session.SessionID);
+            var postData = new Dictionary<string, string>();
+            postData["op"] = "add_phone_number";
+            postData["arg"] = PhoneNumber;
+            postData["sessionid"] = _session.SessionID;
 
-            string response = SteamWeb.Request(APIEndpoints.COMMUNITY_BASE + "/steamguard/phoneajax", "POST", postData, _cookies);
-            if (response == null) return false;
+            SteamWeb.Request(response =>
+            {
+                if (response == null)
+                {
+                    callback(false);
+                    return;
+                }
 
-            var addPhoneNumberResponse = JsonConvert.DeserializeObject<AddPhoneResponse>(response);
-            return addPhoneNumberResponse.Success;
+                var addPhoneNumberResponse = JsonConvert.DeserializeObject<AddPhoneResponse>(response);
+                callback(addPhoneNumberResponse.Success);
+            }, APIEndpoints.COMMUNITY_BASE + "/steamguard/phoneajax", "POST", postData, _cookies);
         }
 
-        private bool _hasPhoneAttached()
+        private void _hasPhoneAttached(BCallback callback)
         {
-            var postData = new NameValueCollection();
-            postData.Add("op", "has_phone");
-            postData.Add("arg", "null");
-            postData.Add("sessionid", _session.SessionID);
+            var postData = new Dictionary<string, string>();
+            postData["op"] = "has_phone";
+            postData["arg"] = "null";
+            postData["sessionid"] = _session.SessionID;
 
-            string response = SteamWeb.Request(APIEndpoints.COMMUNITY_BASE + "/steamguard/phoneajax", "POST", postData, _cookies);
-            if (response == null) return false;
+            SteamWeb.Request(response =>
+            {
+                if (response == null)
+                {
+                    callback(false);
+                    return;
+                }
 
-            var hasPhoneResponse = JsonConvert.DeserializeObject<HasPhoneResponse>(response);
-            return hasPhoneResponse.HasPhone;
+                var hasPhoneResponse = JsonConvert.DeserializeObject<HasPhoneResponse>(response);
+                callback(hasPhoneResponse.HasPhone);
+            }, APIEndpoints.COMMUNITY_BASE + "/steamguard/phoneajax", "POST", postData, _cookies);
         }
 
         public enum LinkResult
@@ -244,17 +318,10 @@ namespace SteamAuth
 
         public static string GenerateDeviceID()
         {
-            using (var sha1 = new SHA1Managed())
-            {
-                RNGCryptoServiceProvider secureRandom = new RNGCryptoServiceProvider();
-                byte[] randomBytes = new byte[8];
-                secureRandom.GetBytes(randomBytes);
+            IBuffer random = CryptographicBuffer.GenerateRandom(32);
+            string random32 = CryptographicBuffer.EncodeToHexString(random).Replace("-", "").Substring(0, 32).ToLower();
 
-                byte[] hashedBytes = sha1.ComputeHash(randomBytes);
-                string random32 = BitConverter.ToString(hashedBytes).Replace("-", "").Substring(0, 32).ToLower();
-
-                return "android:" + SplitOnRatios(random32, new[] { 8, 4, 4, 4, 12 }, "-");
-            }
+            return "android:" + SplitOnRatios(random32, new[] { 8, 4, 4, 4, 12 }, "-");
         }
 
         private static string SplitOnRatios(string str, int[] ratios, string intermediate)

@@ -1,4 +1,8 @@
-﻿using System.Net;
+﻿using Newtonsoft.Json;
+using System;
+using System.Collections.Generic;
+using System.Net;
+using Windows.Storage;
 
 namespace SteamAuth
 {
@@ -18,23 +22,24 @@ namespace SteamAuth
 
         public void AddCookies(CookieContainer cookies)
         {
-            cookies.Add(new Cookie("mobileClientVersion", "0 (2.1.3)", "/", ".steamcommunity.com"));
-            cookies.Add(new Cookie("mobileClient", "android", "/", ".steamcommunity.com"));
+            Uri uri = SteamWeb.uri;
+            cookies.Add(uri, new Cookie("mobileClientVersion", "0 (2.1.3)", "/"));
+            cookies.Add(uri, new Cookie("mobileClient", "android", "/"));
 
-            cookies.Add(new Cookie("steamid", SteamID.ToString(), "/", ".steamcommunity.com"));
-            cookies.Add(new Cookie("steamLogin", SteamLogin, "/", ".steamcommunity.com")
+            cookies.Add(uri, new Cookie("steamid", SteamID.ToString(), "/"));
+            cookies.Add(uri, new Cookie("steamLogin", SteamLogin, "/")
             {
                 HttpOnly = true
             });
 
-            cookies.Add(new Cookie("steamLoginSecure", SteamLoginSecure, "/", ".steamcommunity.com")
+            cookies.Add(uri, new Cookie("steamLoginSecure", SteamLoginSecure, "/")
             {
                 HttpOnly = true,
                 Secure = true
             });
-            cookies.Add(new Cookie("Steam_Language", "english", "/", ".steamcommunity.com"));
-            cookies.Add(new Cookie("dob", "", "/", ".steamcommunity.com"));
-            cookies.Add(new Cookie("sessionid", this.SessionID, "/", ".steamcommunity.com"));
+            cookies.Add(uri, new Cookie("Steam_Language", "english", "/"));
+            cookies.Add(uri, new Cookie("dob", "", "/"));
+            cookies.Add(uri, new Cookie("sessionid", this.SessionID, "/"));
         }
     }
 }

@@ -3,6 +3,7 @@ using Newtonsoft.Json;
 
 namespace SteamAuth
 {
+
     /// <summary>
     /// Class to help align system time with the Steam server time. Not super advanced; probably not taking some things into account that it should.
     /// Necessary to generate up-to-date codes. In general, this will have an error of less than a second, assuming Steam is operational.
@@ -12,32 +13,29 @@ namespace SteamAuth
         private static bool _aligned = false;
         private static int _timeDifference = 0;
 
-        public static long GetSteamTime()
+        public static void GetSteamTime(TimeCallback callback)
         {
             if (!TimeAligner._aligned)
             {
-                TimeAligner.AlignTime();
+                TimeAligner.AlignTime(response =>
+                {
+                    callback(Util.GetSystemUnixTime() + _timeDifference);
+                });
             }
-            return Util.GetSystemUnixTime() + _timeDifference;
+            callback(Util.GetSystemUnixTime() + _timeDifference);
         }
 
-        public static void AlignTime()
+        public static void AlignTime(BCallback callback)
         {
             long currentTime = Util.GetSystemUnixTime();
-            using (WebClient client = new WebClient())
+            SteamWeb.Request(response =>
             {
-                try
-                {
-                    string response = client.UploadString(APIEndpoints.TWO_FACTOR_TIME_QUERY, "steamid=0");
-                    TimeQuery query = JsonConvert.DeserializeObject<TimeQuery>(response);
-                    TimeAligner._timeDifference = (int)(query.Response.ServerTime - currentTime);
-                    TimeAligner._aligned = true;
-                }
-                catch (WebException e)
-                {
-                    return;
-                }
-            }
+                TimeQuery query = JsonConvert.DeserializeObject<TimeQuery>(response);
+                TimeAligner._timeDifference = (int)(query.Response.ServerTime - currentTime);
+                TimeAligner._aligned = true;
+
+                callback(true);
+            }, APIEndpoints.TWO_FACTOR_TIME_QUERY, "POST");
         }
 
         internal class TimeQuery
