@@ -30,11 +30,17 @@ namespace SteamAuth
             long currentTime = Util.GetSystemUnixTime();
             SteamWeb.Request(response =>
             {
-                TimeQuery query = JsonConvert.DeserializeObject<TimeQuery>(response);
-                TimeAligner._timeDifference = (int)(query.Response.ServerTime - currentTime);
-                TimeAligner._aligned = true;
+                if (response != null)
+                {
+                    TimeQuery query = JsonConvert.DeserializeObject<TimeQuery>(response);
+                    TimeAligner._timeDifference = (int)(query.Response.ServerTime - currentTime);
+                    TimeAligner._aligned = true;
 
-                callback(true);
+                    callback(true);
+                } else
+                {
+                    callback(false);
+                }
             }, APIEndpoints.TWO_FACTOR_TIME_QUERY, "POST");
         }
 

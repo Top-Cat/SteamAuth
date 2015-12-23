@@ -79,7 +79,7 @@ namespace SteamAuth
                     callback(!(removeResponse == null || removeResponse.Response == null || !removeResponse.Response.Success));
                 }, APIEndpoints.STEAMAPI_BASE + "/ITwoFactorService/RemoveAuthenticator/v0001", "POST", postData);
             }
-            catch (Exception e)
+            catch (Exception)
             {
                 callback(false);
             }
@@ -128,7 +128,7 @@ namespace SteamAuth
                     codePoint /= steamGuardCodeTranslations.Length;
                 }
             }
-            catch (Exception e)
+            catch (Exception)
             {
                 return null; //Change later, catch-alls are bad!
             }
@@ -231,7 +231,7 @@ namespace SteamAuth
                     this.Session.SteamLoginSecure = tokenSecure;
                     callback(true);
                 }
-                catch (Exception e)
+                catch (Exception)
                 {
                     callback(false);
                 }
