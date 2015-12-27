@@ -101,7 +101,12 @@ namespace SteamAuth
 
                     SteamWeb.MobileLoginRequest(rawLoginResponse =>
                     {
-                        var loginResponse = JsonConvert.DeserializeObject<LoginResponse>(rawLoginResponse);
+                        LoginResponse loginResponse = null;
+
+                        if (rawLoginResponse != null)
+                        {
+                            loginResponse = JsonConvert.DeserializeObject<LoginResponse>(rawLoginResponse);
+                        }
 
                         if (loginResponse == null)
                         {
