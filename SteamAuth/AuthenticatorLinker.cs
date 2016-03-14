@@ -127,18 +127,15 @@ namespace SteamAuth
 
         public void FinalizeAddAuthenticator(FinalizeCallback callback, string smsCode)
         {
-            bool smsCodeGood = false;
-
             var postData = new Dictionary<string, string>();
             postData["steamid"] = _session.SteamID.ToString();
             postData["access_token"] = _session.OAuthToken;
             postData["activation_code"] = smsCode;
-            postData["authenticator_code"] = "";
             int tries = 0;
 
             Callback makeRequest = r => { };
 
-            Callback getAuthCode = response =>
+            /*Callback getAuthCode = response =>
             {
                 if (tries == 0)
                 {
@@ -148,7 +145,7 @@ namespace SteamAuth
                 {
                     LinkedAccount.GenerateSteamGuardCode(makeRequest);
                 }
-            };
+            };*/
 
             Callback reqCallback = response =>
             {
@@ -195,9 +192,8 @@ namespace SteamAuth
 
                 if (finalizeResponse.Response.WantMore)
                 {
-                    smsCodeGood = true;
                     tries++;
-                    getAuthCode("");
+                    LinkedAccount.GenerateSteamGuardCode(makeRequest);
                     return;
                 }
 
@@ -210,14 +206,50 @@ namespace SteamAuth
                 TimeAligner.GetSteamTime(steamTime => {
                     postData["authenticator_time"] = steamTime.ToString();
 
-                    if (smsCodeGood)
-                        postData["activation_code"] = "";
-
                     SteamWeb.MobileLoginRequest(reqCallback, APIEndpoints.STEAMAPI_BASE + "/ITwoFactorService/FinalizeAddAuthenticator/v0001", "POST", postData);
                 });
             };
 
-            getAuthCode("");
+            //The act of checking the SMS code is necessary for Steam to finalize adding the phone number to the account.
+            //Of course, we only want to check it if we're adding a phone number in the first place...
+
+            if (!String.IsNullOrEmpty(this.PhoneNumber))
+            {
+                this._checkSMSCode(b =>
+                {
+                    if (b)
+                    {
+                        LinkedAccount.GenerateSteamGuardCode(makeRequest);
+                    }
+                    else
+                    {
+                        callback(FinalizeResult.BadSMSCode);
+                    }
+                }, smsCode);
+            }
+            else
+            {
+                LinkedAccount.GenerateSteamGuardCode(makeRequest);
+            }
+        }
+
+        private void _checkSMSCode(BCallback callback, string smsCode)
+        {
+            var postData = new Dictionary<string, string>();
+            postData["op"] = "check_sms_code";
+            postData["arg"] = smsCode;
+            postData["sessionid"] = _session.SessionID;
+
+            SteamWeb.Request(response => {
+                if (response == null)
+                {
+                    callback(false);
+                    return;
+                }
+
+                var addPhoneNumberResponse = JsonConvert.DeserializeObject<AddPhoneResponse>(response);
+                callback(addPhoneNumberResponse.Success);
+            }, APIEndpoints.COMMUNITY_BASE + "/steamguard/phoneajax", "POST", postData, _cookies);
         }
 
         private void _addPhoneNumber(BCallback callback)

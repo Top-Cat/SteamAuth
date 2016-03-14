@@ -1,4 +1,4 @@
-﻿using Newtonsoft.Json;
+using Newtonsoft.Json;
 using System;
 using System.Collections.Generic;
 using System.Collections.Specialized;
@@ -161,6 +161,7 @@ namespace SteamAuth
                         }
 
                         callback(new Confirmation[0]);
+                        return;
                     }
 
                     MatchCollection confIDs = confIDRegex.Matches(response);
@@ -175,9 +176,9 @@ namespace SteamAuth
                         string confDesc = confDescs[i].Groups[1].Value;
                         Confirmation conf = new Confirmation()
                         {
-                            ConfirmationDescription = confDesc,
-                            ConfirmationID = confID,
-                            ConfirmationKey = confKey
+                            Description = confDesc,
+                            ID = confID,
+                            Key = confKey
                         };
                         ret.Add(conf);
                     }
@@ -245,7 +246,7 @@ namespace SteamAuth
                 string url = APIEndpoints.COMMUNITY_BASE + "/mobileconf/ajaxop";
                 string queryString = "?op=" + op + "&";
                 queryString += queryParams;
-                queryString += "&cid=" + conf.ConfirmationID + "&ck=" + conf.ConfirmationKey;
+                queryString += "&cid=" + conf.ID + "&ck=" + conf.Key;
                 url += queryString;
 
                 CookieContainer cookies = new CookieContainer();
@@ -282,7 +283,7 @@ namespace SteamAuth
         public void GenerateConfirmationQueryParams(Callback callback, string tag)
         {
             if (String.IsNullOrEmpty(DeviceID))
-                DeviceID = AuthenticatorLinker.GenerateDeviceID();
+                throw new ArgumentException("Device ID is not present");
 
             TimeAligner.GetSteamTime(time =>
             {
@@ -294,7 +295,8 @@ namespace SteamAuth
         {
             int n2 = tag != null ? Math.Min(40, 8 + tag.Length) : 8;
             byte[] array = new byte[n2];
-            for (int n4 = 7; n4 >= 0; n4--) {
+            for (int n4 = 7; n4 >= 0; n4--)
+            {
                 array[n4] = (byte)time;
                 time >>= 8;
             }
@@ -318,6 +320,54 @@ namespace SteamAuth
             {
                 return null; //Fix soon: catch-all is BAD!
             }
+        }
+
+        private delegate void ConfirmationCallback(ConfirmationDetailsResponse time);
+
+        public void GetConfirmationTradeOfferID(LongCallback callback, Confirmation conf)
+        {
+            _getConfirmationDetails(confDetails =>
+            {
+                if (confDetails == null || !confDetails.Success)
+                {
+                    callback(-1);
+                    return;
+                }
+
+                Regex tradeOfferIDRegex = new Regex("<div class=\"tradeoffer\" id=\"tradeofferid_(\\d+)\" >");
+                if (!tradeOfferIDRegex.IsMatch(confDetails.HTML))
+                {
+                    callback(-1);
+                    return;
+                }
+                callback(long.Parse(tradeOfferIDRegex.Match(confDetails.HTML).Groups[1].Value));
+            }, conf);
+        }
+
+        private void _getConfirmationDetails(ConfirmationCallback callback, Confirmation conf)
+        {
+            string url = APIEndpoints.COMMUNITY_BASE + "/mobileconf/details/" + conf.ID + "?";
+            GenerateConfirmationQueryParams(queryString =>
+            {
+                url += queryString;
+
+                CookieContainer cookies = new CookieContainer();
+                this.Session.AddCookies(cookies);
+                GenerateConfirmationURL(referer =>
+                {
+                    SteamWeb.Request(response =>
+                    {
+                        if (String.IsNullOrEmpty(response))
+                        {
+                            callback(null);
+                            return;
+                        }
+
+                        var confResponse = JsonConvert.DeserializeObject<ConfirmationDetailsResponse>(response);
+                        callback(confResponse);
+                    }, url, "GET", null, cookies, null);
+                });
+            }, "details");
         }
 
         //TODO: Determine how to detect an invalid session.
@@ -355,6 +405,15 @@ namespace SteamAuth
         {
             [JsonProperty("success")]
             public bool Success { get; set; }
+        }
+
+        private class ConfirmationDetailsResponse
+        {
+            [JsonProperty("success")]
+            public bool Success { get; set; }
+
+            [JsonProperty("html")]
+            public string HTML { get; set; }
         }
     }
 }
