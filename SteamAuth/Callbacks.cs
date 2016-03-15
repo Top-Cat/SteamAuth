@@ -13,5 +13,5 @@ namespace SteamAuth
     public delegate void FCCallback(Confirmation[] response);
     public delegate void Callback(string response);
     public delegate void LoginCallback(LoginResult result);
-    public delegate void TimeCallback(long time);
+    public delegate void LongCallback(long time);
 }

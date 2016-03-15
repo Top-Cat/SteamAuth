@@ -13,7 +13,7 @@ namespace SteamAuth
         private static bool _aligned = false;
         private static int _timeDifference = 0;
 
-        public static void GetSteamTime(TimeCallback callback)
+        public static void GetSteamTime(LongCallback callback)
         {
             if (!TimeAligner._aligned)
             {
@@ -37,8 +37,7 @@ namespace SteamAuth
                     TimeAligner._aligned = true;
 
                     callback(true);
-                } else
-                {
+                } else {
                     callback(false);
                 }
             }, APIEndpoints.TWO_FACTOR_TIME_QUERY, "POST");

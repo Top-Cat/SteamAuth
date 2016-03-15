@@ -8,8 +8,8 @@ namespace SteamAuth
 {
     public class Confirmation
     {
-        public string ConfirmationID;
-        public string ConfirmationKey;
-        public string ConfirmationDescription;
+        public string ID;
+        public string Key;
+        public string Description;
     }
 }
