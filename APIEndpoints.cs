@@ -8,5 +8,6 @@
         public static string MOBILEAUTH_GETWGTOKEN = MOBILEAUTH_BASE.Replace("%s", "GetWGToken");
         public const string TWO_FACTOR_BASE = STEAMAPI_BASE + "/ITwoFactorService/%s/v0001";
         public static string TWO_FACTOR_TIME_QUERY = TWO_FACTOR_BASE.Replace("%s", "QueryTime");
+        public const string USER_SUMMARIES_URL = STEAMAPI_BASE + "/ISteamUserOAuth/GetUserSummaries/v0001";
     }
 }
