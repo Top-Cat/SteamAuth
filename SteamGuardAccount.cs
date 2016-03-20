@@ -50,7 +50,16 @@ namespace SteamAuth
         [JsonProperty("device_id")]
         public string DeviceID { get; set; }
 
-        public string Username { get; set; }
+        [JsonProperty("personaname")]
+        private string displayName;
+
+        public string DisplayName {
+            get { return this.displayName; }
+            set { DisplayCache = DateTime.UtcNow; displayName = value; }
+        }
+
+        [JsonProperty("personacache")]
+        public DateTime DisplayCache { get; private set; }
 
         /// <summary>
         /// Set to true if the authenticator has actually been applied to the account.
