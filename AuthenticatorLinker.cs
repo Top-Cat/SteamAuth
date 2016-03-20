@@ -135,21 +135,9 @@ namespace SteamAuth
 
             Callback makeRequest = r => { };
 
-            /*Callback getAuthCode = response =>
-            {
-                if (tries == 0)
-                {
-                    makeRequest("");
-                }
-                else
-                {
-                    LinkedAccount.GenerateSteamGuardCode(makeRequest);
-                }
-            };*/
-
             Callback reqCallback = response =>
             {
-                if (tries++ > 30)
+                if (tries > 30)
                 {
                     callback(FinalizeResult.GeneralFailure);
                     return;

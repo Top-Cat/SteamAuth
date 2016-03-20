@@ -15,14 +15,16 @@ namespace SteamAuth
 
         public static void GetSteamTime(LongCallback callback)
         {
-            if (!TimeAligner._aligned)
+            if (TimeAligner._aligned)
             {
-                TimeAligner.AlignTime(response =>
-                {
-                    callback(Util.GetSystemUnixTime() + _timeDifference);
-                });
+                callback(Util.GetSystemUnixTime() + _timeDifference);
+                return;
             }
-            callback(Util.GetSystemUnixTime() + _timeDifference);
+
+            TimeAligner.AlignTime(response =>
+            {
+                callback(Util.GetSystemUnixTime() + _timeDifference);
+            });
         }
 
         public static void AlignTime(BCallback callback)
