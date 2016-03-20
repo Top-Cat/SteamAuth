@@ -172,6 +172,7 @@ namespace SteamAuth
                             session.SteamLoginSecure = session.SteamID + "%7C%7C" + oAuthData.SteamLoginSecure;
                             session.WebCookie = oAuthData.Webcookie;
                             session.SessionID = readableCookies["sessionid"].Value;
+                            session.Username = this.Username;
                             this.Session = session;
                             this.LoggedIn = true;
                             callback(LoginResult.LoginOkay);

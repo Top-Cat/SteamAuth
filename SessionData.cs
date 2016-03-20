@@ -10,6 +10,8 @@ namespace SteamAuth
     {
         public string SessionID { get; set; }
 
+        public string Username { get; set; }
+
         public string SteamLogin { get; set; }
 
         public string SteamLoginSecure { get; set; }
