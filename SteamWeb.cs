@@ -11,9 +11,8 @@ using Windows.Web.Http.Headers;
 namespace SteamAuth
 {
 
-    public class SteamWeb
+    public class SteamWeb : IWebRequest
     {
-
         public static Uri uri = new Uri("https://steamcommunity.com");
 
         /// <summary>
@@ -24,12 +23,12 @@ namespace SteamAuth
         /// <param name="data">Name-data pairs</param>
         /// <param name="cookies">current cookie container</param>
         /// <returns>response body</returns>
-        public static void MobileLoginRequest(Callback callback, string url, string method, Dictionary<string, string> data = null, CookieContainer cookies = null, WebHeaderCollection headers = null)
+        public void MobileLoginRequest(Callback callback, string url, string method, Dictionary<string, string> data = null, CookieContainer cookies = null, WebHeaderCollection headers = null)
         {
-            Request(callback, url, method, data, cookies, headers, APIEndpoints.COMMUNITY_BASE + "/mobilelogin?oauth_client_id=DE45CD61&oauth_scope=read_profile%20write_profile%20read_client%20write_client");
+            Request(url, method, data, cookies, headers, APIEndpoints.COMMUNITY_BASE + "/mobilelogin?oauth_client_id=DE45CD61&oauth_scope=read_profile%20write_profile%20read_client%20write_client", callback);
         }
 
-        public static void Request(Callback callback, string url, string method, Dictionary<string, string> data = null, CookieContainer cookies = null, WebHeaderCollection headers = null, string referer = APIEndpoints.COMMUNITY_BASE)
+        public void Request(string url, string method, Dictionary<string, string> data, CookieContainer cookies, WebHeaderCollection headers, string referer, Callback callback)
         {
             List<string> dataFormatted = new List<string>();
             if (data != null)
@@ -93,6 +92,26 @@ namespace SteamAuth
                     ResponseCallback(fin, callback);
                 }, request);
             }
+        }
+
+        public void Request(string url, string method, Dictionary<string, string> data, CookieContainer cookies, WebHeaderCollection headers, Callback callback)
+        {
+            Request(url, method, data, cookies, headers, APIEndpoints.COMMUNITY_BASE, callback);
+        }
+
+        public void Request(string url, string method, Dictionary<string, string> data, CookieContainer cookies, Callback callback)
+        {
+            Request(url, method, data, cookies, null, callback);
+        }
+
+        public void Request(string url, string method, Dictionary<string, string> data, Callback callback)
+        {
+            Request(url, method, data, null, callback);
+        }
+
+        public void Request(string url, string method, Callback callback)
+        {
+            Request(url, method, null, callback);
         }
 
         private static void ResponseCallback(IAsyncResult result, Callback callback)

@@ -71,7 +71,7 @@ namespace SteamAuth
 
         private static byte[] steamGuardCodeTranslations = new byte[] { 50, 51, 52, 53, 54, 55, 56, 57, 66, 67, 68, 70, 71, 72, 74, 75, 77, 78, 80, 81, 82, 84, 86, 87, 88, 89 };
 
-        public void DeactivateAuthenticator(BCallback callback, int scheme = 2)
+        public void DeactivateAuthenticator(SteamWeb web, int scheme, BCallback callback)
         {
             var postData = new Dictionary<String, String>();
             postData.Add("steamid", this.Session.SteamID.ToString());
@@ -81,7 +81,7 @@ namespace SteamAuth
 
             try
             {
-                SteamWeb.MobileLoginRequest(res =>
+                web.MobileLoginRequest(res =>
                 {
                     var removeResponse = JsonConvert.DeserializeObject<RemoveAuthenticatorResponse>(res);
 
@@ -94,9 +94,15 @@ namespace SteamAuth
             }
         }
 
-        public void GenerateSteamGuardCode(Callback callback)
+        public void DeactivateAuthenticator(SteamWeb web, BCallback callback)
         {
-            TimeAligner.GetSteamTime(time =>
+            // Default scheme = 2
+            DeactivateAuthenticator(web, 2, callback);
+        }
+
+        public void GenerateSteamGuardCode(SteamWeb web, Callback callback)
+        {
+            TimeAligner.GetSteamTime(web, time =>
             {
                 callback(GenerateSteamGuardCodeForTime(time));
             });
@@ -144,14 +150,14 @@ namespace SteamAuth
             return Encoding.UTF8.GetString(codeArray, 0, codeArray.Length);
         }
 
-        public void FetchConfirmations(FCCallback callback)
+        public void FetchConfirmations(SteamWeb web, FCCallback callback)
         {
-            this.GenerateConfirmationURL(url =>
+            this.GenerateConfirmationURL(web, url =>
             {
                 CookieContainer cookies = new CookieContainer();
                 this.Session.AddCookies(cookies);
 
-                SteamWeb.Request(response =>
+                web.Request(url, "GET", null, cookies, response =>
                 {
                     /*So you're going to see this abomination and you're going to be upset.
                       It's understandable. But the thing is, regex for HTML -- while awful -- makes this way faster than parsing a DOM, plus we don't need another library.
@@ -193,31 +199,31 @@ namespace SteamAuth
                     }
 
                     callback(ret.ToArray());
-                }, url, "GET", null, cookies);
+                });
             });
         }
 
-        public void AcceptConfirmation(BCallback callback, Confirmation conf)
+        public void AcceptConfirmation(SteamWeb web, Confirmation conf, BCallback callback)
         {
-            _sendConfirmationAjax(callback, conf, "allow");
+            _sendConfirmationAjax(web, conf, "allow", callback);
         }
 
-        public void DenyConfirmation(BCallback callback, Confirmation conf)
+        public void DenyConfirmation(SteamWeb web, Confirmation conf, BCallback callback)
         {
-            _sendConfirmationAjax(callback, conf, "cancel");
+            _sendConfirmationAjax(web, conf, "cancel", callback);
         }
 
         /// <summary>
         /// Refreshes the Steam session. Necessary to perform confirmations if your session has expired or changed.
         /// </summary>
         /// <returns></returns>
-        public void RefreshSession(BCallback callback)
+        public void RefreshSession(SteamWeb web, BCallback callback)
         {
             string url = APIEndpoints.MOBILEAUTH_GETWGTOKEN;
             Dictionary<string, string> postData = new Dictionary<string, string>();
             postData.Add("access_token", this.Session.OAuthToken);
 
-            SteamWeb.Request(response =>
+            web.Request(url, "POST", postData, response =>
             {
                 if (response == null)
                 {
@@ -245,12 +251,12 @@ namespace SteamAuth
                 {
                     callback(false);
                 }
-            }, url, "POST", postData);
+            });
         }
 
-        private void _sendConfirmationAjax(BCallback callback, Confirmation conf, string op)
+        private void _sendConfirmationAjax(SteamWeb web, Confirmation conf, string op, BCallback callback)
         {
-            GenerateConfirmationQueryParams(queryParams =>
+            GenerateConfirmationQueryParams(web, op, queryParams =>
             {
                 string url = APIEndpoints.COMMUNITY_BASE + "/mobileconf/ajaxop";
                 string queryString = "?op=" + op + "&";
@@ -262,7 +268,7 @@ namespace SteamAuth
                 this.Session.AddCookies(cookies);
                 string referer = GenerateConfirmationURL(queryParams);
 
-                SteamWeb.Request(response =>
+                web.Request(url, "GET", null, cookies, response =>
                 {
                     if (response == null)
                     {
@@ -272,16 +278,22 @@ namespace SteamAuth
 
                     SendConfirmationResponse confResponse = JsonConvert.DeserializeObject<SendConfirmationResponse>(response);
                     callback(confResponse.Success);
-                }, url, "GET", null, cookies, null);
-            }, op);
+                });
+            });
         }
 
-        public void GenerateConfirmationURL(Callback callback, string tag = "conf")
+        public void GenerateConfirmationURL(SteamWeb web, string tag, Callback callback)
         {
-            GenerateConfirmationQueryParams(queryString =>
+            GenerateConfirmationQueryParams(web, tag, queryString =>
             {
                 callback(GenerateConfirmationURL(queryString));
-            }, tag);
+            });
+        }
+
+        public void GenerateConfirmationURL(SteamWeb web, Callback callback)
+        {
+            // Default tag = conf
+            GenerateConfirmationURL(web, "conf", callback);
         }
 
         public string GenerateConfirmationURL(string queryString)
@@ -289,12 +301,12 @@ namespace SteamAuth
             return APIEndpoints.COMMUNITY_BASE + "/mobileconf/conf?" + queryString;
         }
 
-        public void GenerateConfirmationQueryParams(Callback callback, string tag)
+        public void GenerateConfirmationQueryParams(SteamWeb web, string tag, Callback callback)
         {
             if (String.IsNullOrEmpty(DeviceID))
                 throw new ArgumentException("Device ID is not present");
 
-            TimeAligner.GetSteamTime(time =>
+            TimeAligner.GetSteamTime(web, time =>
             {
                 callback("p=" + this.DeviceID + "&a=" + this.Session.SteamID.ToString() + "&k=" + _generateConfirmationHashForTime(time, tag) + "&t=" + time + "&m=android&tag=" + tag);
             });
@@ -333,9 +345,9 @@ namespace SteamAuth
 
         private delegate void ConfirmationCallback(ConfirmationDetailsResponse time);
 
-        public void GetConfirmationTradeOfferID(LongCallback callback, Confirmation conf)
+        public void GetConfirmationTradeOfferID(SteamWeb web, Confirmation conf, LongCallback callback)
         {
-            _getConfirmationDetails(confDetails =>
+            _getConfirmationDetails(web, conf, confDetails =>
             {
                 if (confDetails == null || !confDetails.Success)
                 {
@@ -350,21 +362,21 @@ namespace SteamAuth
                     return;
                 }
                 callback(long.Parse(tradeOfferIDRegex.Match(confDetails.HTML).Groups[1].Value));
-            }, conf);
+            });
         }
 
-        private void _getConfirmationDetails(ConfirmationCallback callback, Confirmation conf)
+        private void _getConfirmationDetails(SteamWeb web, Confirmation conf, ConfirmationCallback callback)
         {
             string url = APIEndpoints.COMMUNITY_BASE + "/mobileconf/details/" + conf.ID + "?";
-            GenerateConfirmationQueryParams(queryString =>
+            GenerateConfirmationQueryParams(web, "details", queryString =>
             {
                 url += queryString;
 
                 CookieContainer cookies = new CookieContainer();
                 this.Session.AddCookies(cookies);
-                GenerateConfirmationURL(referer =>
+                GenerateConfirmationURL(web, referer =>
                 {
-                    SteamWeb.Request(response =>
+                    web.Request(url, "GET", null, cookies, response =>
                     {
                         if (String.IsNullOrEmpty(response))
                         {
@@ -374,9 +386,9 @@ namespace SteamAuth
 
                         var confResponse = JsonConvert.DeserializeObject<ConfirmationDetailsResponse>(response);
                         callback(confResponse);
-                    }, url, "GET", null, cookies, null);
+                    });
                 });
-            }, "details");
+            });
         }
 
         //TODO: Determine how to detect an invalid session.

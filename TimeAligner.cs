@@ -13,7 +13,7 @@ namespace SteamAuth
         private static bool _aligned = false;
         private static int _timeDifference = 0;
 
-        public static void GetSteamTime(LongCallback callback)
+        public static void GetSteamTime(IWebRequest web, LongCallback callback)
         {
             if (TimeAligner._aligned)
             {
@@ -21,16 +21,16 @@ namespace SteamAuth
                 return;
             }
 
-            TimeAligner.AlignTime(response =>
+            TimeAligner.AlignTime(web, response =>
             {
                 callback(Util.GetSystemUnixTime() + _timeDifference);
             });
         }
 
-        public static void AlignTime(BCallback callback)
+        public static void AlignTime(IWebRequest web, BCallback callback)
         {
             long currentTime = Util.GetSystemUnixTime();
-            SteamWeb.Request(response =>
+            web.Request(APIEndpoints.TWO_FACTOR_TIME_QUERY, "POST", response =>
             {
                 if (response != null)
                 {
@@ -42,7 +42,7 @@ namespace SteamAuth
                 } else {
                     callback(false);
                 }
-            }, APIEndpoints.TWO_FACTOR_TIME_QUERY, "POST");
+            });
         }
 
         internal class TimeQuery

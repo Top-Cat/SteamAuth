@@ -46,7 +46,7 @@ namespace SteamAuth
             this.Password = password;
         }
 
-        public void DoLogin(LoginCallback callback)
+        public void DoLogin(SteamWeb web, LoginCallback callback)
         {
             var postData = new Dictionary<string, string>();
             var cookies = _cookies;
@@ -54,7 +54,7 @@ namespace SteamAuth
             Callback hasCookies = res =>
             {
                 postData.Add("username", this.Username);
-                SteamWeb.MobileLoginRequest(rsaRawResponse =>
+                web.MobileLoginRequest(rsaRawResponse =>
                 {
                     if (rsaRawResponse == null || rsaRawResponse.Contains("<BODY>\nAn error occurred while processing your request."))
                     {
@@ -99,7 +99,7 @@ namespace SteamAuth
                     postData.Add("loginfriendlyname", "#login_emailauth_friendlyname_mobile");
                     postData.Add("donotcache", Util.GetSystemUnixTime().ToString());
 
-                    SteamWeb.MobileLoginRequest(rawLoginResponse =>
+                    web.MobileLoginRequest(rawLoginResponse =>
                     {
                         LoginResponse loginResponse = null;
 
@@ -193,7 +193,7 @@ namespace SteamAuth
                 WebHeaderCollection headers = new WebHeaderCollection();
                 headers["X-Requested-With"] = "com.valvesoftware.android.steam.community";
 
-                SteamWeb.MobileLoginRequest(hasCookies, url, "GET", null, cookies, headers);
+                web.MobileLoginRequest(hasCookies, url, "GET", null, cookies, headers);
             } else
             {
                 hasCookies("");

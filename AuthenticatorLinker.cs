@@ -51,9 +51,9 @@ namespace SteamAuth
             session.AddCookies(_cookies);
         }
 
-        public void AddAuthenticator(LinkCallback callback)
+        public void AddAuthenticator(SteamWeb web, LinkCallback callback)
         {
-            _hasPhoneAttached(hasPhone =>
+            _hasPhoneAttached(web, hasPhone =>
             {
                 if (hasPhone && PhoneNumber != null)
                 {
@@ -80,7 +80,7 @@ namespace SteamAuth
                     postData["device_identifier"] = this.DeviceID;
                     postData["sms_phone_id"] = "1";
 
-                    SteamWeb.MobileLoginRequest(response =>
+                    web.MobileLoginRequest(response =>
                     {
                         if (response == null)
                         {
@@ -117,7 +117,7 @@ namespace SteamAuth
 
                 if (!hasPhone)
                 {
-                    _addPhoneNumber(numberAddedCallback);
+                    _addPhoneNumber(web, numberAddedCallback);
                 } else
                 {
                     numberAddedCallback(true);
@@ -125,7 +125,7 @@ namespace SteamAuth
             });
         }
 
-        public void FinalizeAddAuthenticator(FinalizeCallback callback, string smsCode)
+        public void FinalizeAddAuthenticator(SteamWeb web, FinalizeCallback callback, string smsCode)
         {
             var postData = new Dictionary<string, string>();
             postData["steamid"] = _session.SteamID.ToString();
@@ -181,7 +181,7 @@ namespace SteamAuth
                 if (finalizeResponse.Response.WantMore)
                 {
                     tries++;
-                    LinkedAccount.GenerateSteamGuardCode(makeRequest);
+                    LinkedAccount.GenerateSteamGuardCode(web, makeRequest);
                     return;
                 }
 
@@ -191,10 +191,10 @@ namespace SteamAuth
 
             makeRequest = response => {
                 postData["authenticator_code"] = response;
-                TimeAligner.GetSteamTime(steamTime => {
+                TimeAligner.GetSteamTime(web, steamTime => {
                     postData["authenticator_time"] = steamTime.ToString();
 
-                    SteamWeb.MobileLoginRequest(reqCallback, APIEndpoints.STEAMAPI_BASE + "/ITwoFactorService/FinalizeAddAuthenticator/v0001", "POST", postData);
+                    web.MobileLoginRequest(reqCallback, APIEndpoints.STEAMAPI_BASE + "/ITwoFactorService/FinalizeAddAuthenticator/v0001", "POST", postData);
                 });
             };
 
@@ -203,32 +203,32 @@ namespace SteamAuth
 
             if (!String.IsNullOrEmpty(this.PhoneNumber))
             {
-                this._checkSMSCode(b =>
+                this._checkSMSCode(web, smsCode, b =>
                 {
                     if (b)
                     {
-                        LinkedAccount.GenerateSteamGuardCode(makeRequest);
+                        LinkedAccount.GenerateSteamGuardCode(web, makeRequest);
                     }
                     else
                     {
                         callback(FinalizeResult.BadSMSCode);
                     }
-                }, smsCode);
+                });
             }
             else
             {
-                LinkedAccount.GenerateSteamGuardCode(makeRequest);
+                LinkedAccount.GenerateSteamGuardCode(web, makeRequest);
             }
         }
 
-        private void _checkSMSCode(BCallback callback, string smsCode)
+        private void _checkSMSCode(SteamWeb web, string smsCode, BCallback callback)
         {
             var postData = new Dictionary<string, string>();
             postData["op"] = "check_sms_code";
             postData["arg"] = smsCode;
             postData["sessionid"] = _session.SessionID;
 
-            SteamWeb.Request(response => {
+            web.Request(APIEndpoints.COMMUNITY_BASE + "/steamguard/phoneajax", "POST", postData, _cookies, response => {
                 if (response == null)
                 {
                     callback(false);
@@ -237,17 +237,17 @@ namespace SteamAuth
 
                 var addPhoneNumberResponse = JsonConvert.DeserializeObject<AddPhoneResponse>(response);
                 callback(addPhoneNumberResponse.Success);
-            }, APIEndpoints.COMMUNITY_BASE + "/steamguard/phoneajax", "POST", postData, _cookies);
+            });
         }
 
-        private void _addPhoneNumber(BCallback callback)
+        private void _addPhoneNumber(SteamWeb web, BCallback callback)
         {
             var postData = new Dictionary<string, string>();
             postData["op"] = "add_phone_number";
             postData["arg"] = PhoneNumber;
             postData["sessionid"] = _session.SessionID;
 
-            SteamWeb.Request(response =>
+            web.Request(APIEndpoints.COMMUNITY_BASE + "/steamguard/phoneajax", "POST", postData, _cookies, response =>
             {
                 if (response == null)
                 {
@@ -257,17 +257,17 @@ namespace SteamAuth
 
                 var addPhoneNumberResponse = JsonConvert.DeserializeObject<AddPhoneResponse>(response);
                 callback(addPhoneNumberResponse.Success);
-            }, APIEndpoints.COMMUNITY_BASE + "/steamguard/phoneajax", "POST", postData, _cookies);
+            });
         }
 
-        private void _hasPhoneAttached(BCallback callback)
+        private void _hasPhoneAttached(SteamWeb web, BCallback callback)
         {
             var postData = new Dictionary<string, string>();
             postData["op"] = "has_phone";
             postData["arg"] = "null";
             postData["sessionid"] = _session.SessionID;
 
-            SteamWeb.Request(response =>
+            web.Request(APIEndpoints.COMMUNITY_BASE + "/steamguard/phoneajax", "POST", postData, _cookies, response =>
             {
                 if (response == null)
                 {
@@ -277,7 +277,7 @@ namespace SteamAuth
 
                 var hasPhoneResponse = JsonConvert.DeserializeObject<HasPhoneResponse>(response);
                 callback(hasPhoneResponse.HasPhone);
-            }, APIEndpoints.COMMUNITY_BASE + "/steamguard/phoneajax", "POST", postData, _cookies);
+            });
         }
 
         public enum LinkResult
